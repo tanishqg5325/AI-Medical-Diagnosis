@@ -142,74 +142,76 @@ public:
     }
 };
 
-network read_network()
+network read_network(string file_name)
 {
 	network Alarm;
 	string line, temp, name;
-	int find = 0;
-  	ifstream myfile("alarm.bif"); 
+  	ifstream myfile(file_name); 
   	vector<string> values;
-  	
-    if(myfile.is_open())
+    while(!myfile.eof())
     {
-    	while(!myfile.eof())
+    	stringstream ss;
+    	getline(myfile, line);
+    	ss.str(line);
+    	ss >> temp;
+    	if(temp.compare("variable") == 0)
     	{
-    		stringstream ss;
-      		getline(myfile, line);
-      		ss.str(line);
-     		ss >> temp;
-     		if(temp.compare("variable") == 0)
-     		{
-     			ss >> name;
-     			getline (myfile,line);
-     			stringstream ss2;
-     			ss2.str(line);
-     			for(int i=0;i<4;i++)
-     				ss2 >> temp;
-     			values.clear();
-     			while(temp.compare("};") != 0)
-     			{
-     				values.pb(temp);
-     				ss2 >> temp;
-    			}
-     			Graph_Node new_node(name, values.size(), values);
-     			Alarm.addNode(new_node);
-     		}
-     		else if(temp.compare("probability") == 0)
-     		{
-     			ss >> temp >> temp;
-                list<Graph_Node>::iterator listIt, listIt1;
-     			listIt = Alarm.search_node(temp);
-                int index = Alarm.get_index(temp);
-                ss >> temp;
-                values.clear();
-     			while(temp.compare(")") != 0)
-     			{
-                    listIt1 = Alarm.search_node(temp);
-                    listIt1->add_child(index);
-     				values.pb(temp);
-     				ss >> temp;
-    			}
-                listIt->set_Parents(values);
-    			getline (myfile,line);
-     			stringstream ss2;
-                
-     			ss2.str(line);
-     			ss2 >> temp >> temp;
-     			vector<float> curr_CPT;
-                string::size_type sz;
-     			while(temp.compare(";") != 0)
-     			{
-     				curr_CPT.pb(atof(temp.c_str()));
-     				ss2 >> temp;
-    			}
-                listIt->set_CPT(curr_CPT);
-     		}
+    		ss >> name;
+    		getline (myfile,line);
+    		stringstream ss2;
+    		ss2.str(line);
+    		for(int i=0;i<4;i++)
+    			ss2 >> temp;
+    		values.clear();
+    		while(temp.compare("};") != 0)
+    		{
+    			values.pb(temp);
+    			ss2 >> temp;
+    		}
+    		Graph_Node new_node(name, values.size(), values);
+    		Alarm.addNode(new_node);
     	}
-    	if(find == 1)
-    		myfile.close();
-  	}
+    	else if(temp.compare("probability") == 0)
+    	{
+    		ss >> temp >> temp;
+            list<Graph_Node>::iterator listIt, listIt1;
+    		listIt = Alarm.search_node(temp);
+            int index = Alarm.get_index(temp);
+            ss >> temp;
+            values.clear();
+    		while(temp.compare(")") != 0)
+    		{
+                listIt1 = Alarm.search_node(temp);
+                listIt1->add_child(index);
+    			values.pb(temp);
+    			ss >> temp;
+    		}
+            listIt->set_Parents(values);
+    		getline (myfile,line);
+    		stringstream ss2;
+            
+    		ss2.str(line);
+    		ss2 >> temp >> temp;
+    		vector<float> curr_CPT;
+            string::size_type sz;
+    		while(temp.compare(";") != 0)
+    		{
+    			curr_CPT.pb(atof(temp.c_str()));
+    			ss2 >> temp;
+    		}
+            listIt->set_CPT(curr_CPT);
+    	}
+    }
+    myfile.close();
   	return Alarm;
+}
+
+vector<string> processLine(string line, int n)
+{
+    vector<string> ans; ans.reserve(n);
+    stringstream ss(line); string word;
+    while(ss >> word) ans.pb(word);
+    return ans;
 }
 
 int main(int argc, char const *argv[])
@@ -219,7 +221,25 @@ int main(int argc, char const *argv[])
 
     assert(argc == 3);
 
-    
+    string bif_file_name = argv[1], data_file_name = argv[2]; 
+    network Alarm = read_network(bif_file_name);
+    // list<Graph_Node>::iterator it = Alarm.get_nth_node(0);
+    // for(auto i : it->get_values()) cout << i << "\n";
 
+    ifstream data_file(data_file_name);
+    int n = Alarm.netSize();
+    vector<vector<string>> data;
+    string line;
+    while(getline(data_file, line))
+    {
+        if(line == "") break;
+        vector<string> row = processLine(line, n);
+        data.pb(row);
+    }
+    data_file.close();
+    // for(string str : data[0]) cout << str << " "; cout << "\n";
+    // for(auto &v : data) assert(v.size() == n);
+    
+    
     return 0;
 }
