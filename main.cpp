@@ -6,6 +6,7 @@
 #include <sstream>
 #include <cstdlib>
 #include <assert.h>
+#include <random>
 #define pb push_back
 using namespace std;
 
@@ -18,7 +19,7 @@ class Graph_Node{
 private:
 	string Node_Name;  // Variable name 
 	vector<int> Children; // Children of a particular node - these are index of nodes in graph.
-	vector<string> Parents; // Parents of a particular node- note these are names of parents
+	vector<int> Parents; // Parents of a particular node- note these are names of parents
 	int nvalues;  // Number of categories a variable represented by this node can take
 	vector<string> values; // Categories of possible values
 	vector<float> CPT; // conditional probability table as a 1-d array . Look for BIF format to understand its meaning
@@ -42,7 +43,7 @@ public:
 		return Children;
 	}
 
-	vector<string> get_Parents()
+	vector<int> get_Parents()
 	{
 		return Parents;
 	}
@@ -68,7 +69,7 @@ public:
 		CPT = new_CPT;
 	}
 
-    void set_Parents(vector<string> Parent_Nodes)
+    void set_Parents(vector<int> Parent_Nodes)
     {
         Parents.clear();
         Parents = Parent_Nodes;
@@ -83,6 +84,14 @@ public:
         Children.pb(new_child_index);
         return 1;
     }
+
+	int getIndexForValue(string val)
+	{
+		for(int i=0;i<nvalues;i++)
+			if(values[i] == val)
+				return i;
+		return -1;
+	}
 };
 
 
@@ -178,15 +187,16 @@ network read_network(string file_name)
     		listIt = Alarm.search_node(temp);
             int index = Alarm.get_index(temp);
             ss >> temp;
-            values.clear();
+            values.clear(); vector<int> parents;
     		while(temp.compare(")") != 0)
     		{
                 listIt1 = Alarm.search_node(temp);
                 listIt1->add_child(index);
-    			values.pb(temp);
+				parents.pb(Alarm.get_index(temp));
+    			// values.pb(temp);
     			ss >> temp;
     		}
-            listIt->set_Parents(values);
+            listIt->set_Parents(parents);
     		getline (myfile,line);
     		stringstream ss2;
             
@@ -206,12 +216,64 @@ network read_network(string file_name)
   	return Alarm;
 }
 
-vector<string> processLine(string line, int n)
+default_random_engine generator;
+uniform_real_distribution<double> distribution(0.0, 1.0);
+
+// given a probability distribution in the form of a vector, returns the index of sampled value
+int sample(vector<float> &v)
 {
-    vector<string> ans; ans.reserve(n);
-    stringstream ss(line); string word;
-    while(ss >> word) ans.pb(word);
-    return ans;
+	int n = v.size();
+	if(n == 1) return 0;
+	double number = distribution(generator), sum = 0;
+	for(int i=0;i<n;i++)
+	{
+		sum += v[i];
+		if(number <= sum) return i;
+	}
+	assert(1 == 0);
+}
+
+float computeProbabilityGivenParents(network &alarm, vector<int> &row, int nodeIndex)
+{
+	list<Graph_Node>::iterator node = alarm.get_nth_node(nodeIndex);
+	vector<int> parents = node->get_Parents();
+	int numParents = parents.size(), cptIndex = 0, prev = 1;
+	for(int l=numParents-1;l>=0;l--)
+	{
+		cptIndex += row[parents[l]] * prev;
+		prev *= alarm.get_nth_node(parents[l])->get_nvalues();
+	}
+	cptIndex += row[nodeIndex] * prev;
+	return node->get_CPT()[cptIndex];
+}
+
+void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missingIndex)
+{
+	int n = alarm.netSize();
+	list<Graph_Node>::iterator missingNode = alarm.get_nth_node(missingIndex);
+	int k = missingNode->get_nvalues(); double normalizing_constant;
+	vector<float> missingNodeDistribution(k);
+	vector<int> children = missingNode->get_children();
+
+	for(int i=0;i<k;i++)
+	{
+		row[missingIndex] = i;
+		missingNodeDistribution[i] = computeProbabilityGivenParents(alarm, row, missingIndex);
+		for(int &j : children)
+			missingNodeDistribution[i] *= computeProbabilityGivenParents(alarm, row, j);
+		normalizing_constant += missingNodeDistribution[i];
+	}
+
+	for(int i=0;i<k;i++)
+		missingNodeDistribution[i] /= normalizing_constant;
+	row[missingIndex] = sample(missingNodeDistribution);
+}
+
+void fillMissingValues(network &alarm, vector<vector<int>> &data, vector<int> &missingIndexes)
+{
+	int rows = data.size();
+	for(int i=0;i<rows;i++)
+		computeProbabilityGivenAllOther(alarm, data[i], missingIndexes[i]);
 }
 
 int main(int argc, char const *argv[])
@@ -228,18 +290,24 @@ int main(int argc, char const *argv[])
 
     ifstream data_file(data_file_name);
     int n = Alarm.netSize();
-    vector<vector<string>> data;
-    string line;
+    vector<vector<int>> data;
+	vector<int> missingIndexes;
+    string line, word;
     while(getline(data_file, line))
     {
-        if(line == "") break;
-        vector<string> row = processLine(line, n);
+        vector<int> row; row.reserve(n);
+		stringstream ss(line); int i = 0;
+		while(ss >> word)
+		{
+			int j = Alarm.get_nth_node(i)->getIndexForValue(word);
+			if(j == -1) missingIndexes.pb(i);
+			row.pb(j); i++;
+		}
         data.pb(row);
     }
     data_file.close();
-    // for(string str : data[0]) cout << str << " "; cout << "\n";
+    // for(int i : data[0]) cout << i << " "; cout << "\n";
     // for(auto &v : data) assert(v.size() == n);
-    
-    
+    // cout << data.size() << "\n";
     return 0;
 }
