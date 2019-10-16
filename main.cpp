@@ -221,12 +221,8 @@ vector<list<Graph_Node>::iterator> nodes;
 void fillAllNodes(network &Alarm)
 {
 	list<Graph_Node>::iterator it = Alarm.get_nth_node(0);
-	int n = Alarm.netSize();
-	for(int i=0;i<n;i++)
-	{
-		nodes.pb(it);
-		it++;
-	}
+	int n = Alarm.netSize(); nodes.reserve(n);
+	for(int i=0;i<n;i++) nodes.pb(it++);
 }
 
 default_random_engine generator;
@@ -257,6 +253,7 @@ double computeProbabilityGivenParents(network &alarm, vector<int> &row, int node
 		prev *= nodes[parents[l]]->get_nvalues();
 	}
 	cptIndex += row[nodeIndex] * prev;
+	assert(cptIndex < node->get_CPT().size());
 	return node->get_CPT()[cptIndex];
 }
 
@@ -299,7 +296,7 @@ int main(int argc, char const *argv[])
     string bif_file_name = argv[1], data_file_name = argv[2]; 
     network Alarm = read_network(bif_file_name);
 	fillAllNodes(Alarm); int n = Alarm.netSize();
-	
+
     // list<Graph_Node>::iterator it = nodes[1];
     // for(auto i : it->get_values()) cout << i << "\n";
 
