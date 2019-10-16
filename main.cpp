@@ -7,6 +7,7 @@
 #include <cstdlib>
 #include <assert.h>
 #include <random>
+#include <unordered_set>
 #define pb push_back
 using namespace std;
 
@@ -14,6 +15,9 @@ using namespace std;
 using namespace std;
 
 // Our graph consists of a list of nodes where each node is represented as follows:
+class Graph_Node;
+vector<list<Graph_Node>::iterator> nodes;
+
 class Graph_Node{
 
 private:
@@ -91,6 +95,116 @@ public:
 			if(values[i] == val)
 				return i;
 		return -1;
+	}
+
+
+	void createCPT(vector<vector<int>> & data,  float smoothing_parameter, int my_column_index){//create CPT table for this node from the data given to you assuming data is complete
+		// since we have not made any provision in the data structure to store the column_number for the given node, it must be inputted from here
+		// int num_entries = 1;
+
+		int cum_prod[Parents.size()+1];
+		// for(int i = Parents.size()-1;i>=0;i--)num_entries = num_entries * nodes[Parents[i]]->get_nvalues();
+		// num_entries = num_entries * nvalues;
+
+		if(Parents.size() > 0){
+			cum_prod[0] = nodes[Parents[Parents.size()-1]]->get_nvalues();
+			for(int i = 1;i<Parents.size();i++)cum_prod[i] = nodes[Parents[Parents.size()-1-i]]->get_nvalues() * cum_prod[i-1];
+			cum_prod[Parents.size()] = cum_prod[Parents.size()-1] * nvalues;
+		}
+		else{
+			cum_prod[0] = nvalues;
+		}
+		CPT.reserve(cum_prod[Parents.size()]);
+
+		vector<vector<unordered_set<int>>> rowsWithParentsValue;
+		// rowsWithParentsValue[i][j] gives a vector of row numbers of indices in which the value of Parent[i] equals j
+		for(int i = 0;i<Parents.size();i++){
+			vector<unordered_set<int>> temp;
+			for(int j = 0; j< nodes[Parents[i]]->get_nvalues();j++){
+					
+					unordered_set<int> set_i_j = getRowNumsWithCondition(data, Parents[i],j);
+					temp.push_back(set_i_j);
+			}
+			rowsWithParentsValue.push_back(temp);
+		}
+		
+
+		
+		for(int i = 0;i<cum_prod[Parents.size()];i++){
+			int row_num;
+
+			if(Parents.size() > 0){
+				row_num = i / cum_prod[Parents.size()-1];//now going to update the value for value of this nodes parameter = row_number
+			}
+			else{
+				row_num  = i;
+			}
+			unordered_set<int> set_satisfying_parents;
+			set_satisfying_parents.clear();
+			for(int l = Parents.size() - 1; l>=0;l--){
+				//value of Parents[l] -> lies at ( Parents.size() -1 - l )th place to the left from the right most end of the representation
+				int index_in_representation = Parents.size() - l - 1;
+
+				int parent_value;
+				if(index_in_representation == 0){
+					parent_value = i % cum_prod[0];
+				}
+				else{
+					parent_value = (i/(cum_prod[index_in_representation-1]) ) % (cum_prod[index_in_representation]/cum_prod[index_in_representation - 1]);
+				}
+				// at this point we have the value of Parents[l] (i.e the one at index_in_representation)
+				
+				if(l==Parents.size()-1){
+					set_satisfying_parents = rowsWithParentsValue[l][parent_value];
+
+				}
+				else{
+					unordered_set<int> uset = rowsWithParentsValue[l][parent_value];
+					vector<int> values_to_remove;
+					for(unordered_set<int>::iterator it = set_satisfying_parents.begin();it!=set_satisfying_parents.end();it ++){
+						if( uset.find(*it) == uset.end()){//key not found
+							values_to_remove.push_back(*it);
+						}
+					}
+
+					for(int val_i  = 0; val_i<values_to_remove.size();val_i++){
+						set_satisfying_parents.erase(values_to_remove[val_i]);
+					}
+					//effectively we took the intersection
+
+				}
+				
+			}
+
+			// at this point we have set_satisfying_parents() -> indices of rows which satisfy the parents conditions for this column
+			double numerator = 0.0;
+			for(std::unordered_set<int>::iterator it = set_satisfying_parents.begin();it!=set_satisfying_parents.end();it++){
+				if( data[*it][my_column_index] == row_num)numerator  = numerator + 1;
+			}
+
+			double denominator = (float)(set_satisfying_parents.size());
+
+			if(Parents.size()==0){
+				
+				numerator = (double)( getRowNumsWithCondition(data,my_column_index,row_num).size());
+				denominator = (double)(data.size());
+				
+			}
+
+			CPT[i]  = (numerator + smoothing_parameter)/(denominator + smoothing_parameter);
+
+		}
+
+	}
+
+	unordered_set<int> getRowNumsWithCondition(vector<vector<int>>& data, int nodeIndex,int nodeValue){
+		unordered_set<int> answer;
+		for(int i = 0 ;i<data.size();i++){
+			if(data[i][nodeIndex]==nodeValue){
+				answer.insert(i);
+			}
+		}
+		return answer;
 	}
 };
 
@@ -216,7 +330,7 @@ network read_network(string file_name)
   	return Alarm;
 }
 
-vector<list<Graph_Node>::iterator> nodes;
+
 
 void fillAllNodes(network &Alarm)
 {
