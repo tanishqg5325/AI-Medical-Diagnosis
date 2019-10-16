@@ -22,7 +22,7 @@ private:
 	vector<int> Parents; // Parents of a particular node- note these are names of parents
 	int nvalues;  // Number of categories a variable represented by this node can take
 	vector<string> values; // Categories of possible values
-	vector<float> CPT; // conditional probability table as a 1-d array . Look for BIF format to understand its meaning
+	vector<double> CPT; // conditional probability table as a 1-d array . Look for BIF format to understand its meaning
 
 public:
 	// Constructor- a node is initialised with its name and its categories
@@ -38,17 +38,17 @@ public:
 		return Node_Name;
 	}
 
-	vector<int> get_children()
+	vector<int>& get_children()
 	{
 		return Children;
 	}
 
-	vector<int> get_Parents()
+	vector<int>& get_Parents()
 	{
 		return Parents;
 	}
 
-	vector<float> get_CPT()
+	vector<double>& get_CPT()
 	{
 		return CPT;
 	}
@@ -58,12 +58,12 @@ public:
 		return nvalues;
 	}
 
-	vector<string> get_values()
+	vector<string>& get_values()
 	{
 		return values;
 	}
 
-	void set_CPT(vector<float> new_CPT)
+	void set_CPT(vector<double> new_CPT)
 	{
 		CPT.clear();
 		CPT = new_CPT;
@@ -202,7 +202,7 @@ network read_network(string file_name)
             
     		ss2.str(line);
     		ss2 >> temp >> temp;
-    		vector<float> curr_CPT;
+    		vector<double> curr_CPT;
             string::size_type sz;
     		while(temp.compare(";") != 0)
     		{
@@ -216,11 +216,24 @@ network read_network(string file_name)
   	return Alarm;
 }
 
+vector<list<Graph_Node>::iterator> nodes;
+
+void fillAllNodes(network &Alarm)
+{
+	list<Graph_Node>::iterator it = Alarm.get_nth_node(0);
+	int n = Alarm.netSize();
+	for(int i=0;i<n;i++)
+	{
+		nodes.pb(it);
+		it++;
+	}
+}
+
 default_random_engine generator;
 uniform_real_distribution<double> distribution(0.0, 1.0);
 
 // given a probability distribution in the form of a vector, returns the index of sampled value
-int sample(vector<float> &v)
+int sample(vector<double> &v)
 {
 	int n = v.size();
 	if(n == 1) return 0;
@@ -233,15 +246,15 @@ int sample(vector<float> &v)
 	assert(1 == 0);
 }
 
-float computeProbabilityGivenParents(network &alarm, vector<int> &row, int nodeIndex)
+double computeProbabilityGivenParents(network &alarm, vector<int> &row, int nodeIndex)
 {
-	list<Graph_Node>::iterator node = alarm.get_nth_node(nodeIndex);
-	vector<int> parents = node->get_Parents();
+	list<Graph_Node>::iterator node = nodes[nodeIndex];
+	vector<int> &parents = node->get_Parents();
 	int numParents = parents.size(), cptIndex = 0, prev = 1;
 	for(int l=numParents-1;l>=0;l--)
 	{
 		cptIndex += row[parents[l]] * prev;
-		prev *= alarm.get_nth_node(parents[l])->get_nvalues();
+		prev *= nodes[parents[l]]->get_nvalues();
 	}
 	cptIndex += row[nodeIndex] * prev;
 	return node->get_CPT()[cptIndex];
@@ -250,10 +263,10 @@ float computeProbabilityGivenParents(network &alarm, vector<int> &row, int nodeI
 void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missingIndex)
 {
 	int n = alarm.netSize();
-	list<Graph_Node>::iterator missingNode = alarm.get_nth_node(missingIndex);
+	list<Graph_Node>::iterator missingNode = nodes[missingIndex];
 	int k = missingNode->get_nvalues(); double normalizing_constant;
-	vector<float> missingNodeDistribution(k);
-	vector<int> children = missingNode->get_children();
+	vector<double> missingNodeDistribution(k);
+	vector<int> &children = missingNode->get_children();
 
 	for(int i=0;i<k;i++)
 	{
@@ -285,24 +298,25 @@ int main(int argc, char const *argv[])
 
     string bif_file_name = argv[1], data_file_name = argv[2]; 
     network Alarm = read_network(bif_file_name);
-    // list<Graph_Node>::iterator it = Alarm.get_nth_node(0);
+	fillAllNodes(Alarm); int n = Alarm.netSize();
+	
+    // list<Graph_Node>::iterator it = nodes[1];
     // for(auto i : it->get_values()) cout << i << "\n";
 
     ifstream data_file(data_file_name);
-    int n = Alarm.netSize();
     vector<vector<int>> data;
 	vector<int> missingIndexes;
-    string line, word;
+    string line, word; vector<int> row(n);
     while(getline(data_file, line))
     {
-        vector<int> row; row.reserve(n);
 		stringstream ss(line); int i = 0;
 		while(ss >> word)
 		{
-			int j = Alarm.get_nth_node(i)->getIndexForValue(word);
+			int j = nodes[i]->getIndexForValue(word);
 			if(j == -1) missingIndexes.pb(i);
-			row.pb(j); i++;
+			row[i++] = j;
 		}
+		// assert(i == n);
         data.pb(row);
     }
     data_file.close();
