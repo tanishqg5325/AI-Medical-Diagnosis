@@ -14,10 +14,10 @@ using namespace std;
 // Format checker just assumes you have Alarm.bif and Solved_Alarm.bif (your file) in current directory
 using namespace std;
 
-// Our graph consists of a list of nodes where each node is represented as follows:
 class Graph_Node;
 vector<list<Graph_Node>::iterator> nodes;
 
+// Our graph consists of a list of nodes where each node is represented as follows:
 class Graph_Node{
 
 private:
@@ -331,7 +331,6 @@ network read_network(string file_name)
 }
 
 
-
 void fillAllNodes(network &Alarm)
 {
 	list<Graph_Node>::iterator it = Alarm.get_nth_node(0);
@@ -397,7 +396,8 @@ void fillMissingValues(network &alarm, vector<vector<int>> &data, vector<int> &m
 {
 	int rows = data.size();
 	for(int i=0;i<rows;i++)
-		computeProbabilityGivenAllOther(alarm, data[i], missingIndexes[i]);
+		if(missingIndexes[i] != -1)
+			computeProbabilityGivenAllOther(alarm, data[i], missingIndexes[i]);
 }
 
 int main(int argc, char const *argv[])
@@ -421,12 +421,17 @@ int main(int argc, char const *argv[])
     while(getline(data_file, line))
     {
 		stringstream ss(line); int i = 0;
+		bool isMissingFound = false;
 		while(ss >> word)
 		{
 			int j = nodes[i]->getIndexForValue(word);
-			if(j == -1) missingIndexes.pb(i);
+			if(j == -1) {
+				missingIndexes.pb(i);
+				isMissingFound = true;
+			}
 			row[i++] = j;
 		}
+		if(!isMissingFound) missingIndexes.pb(-1);
 		// assert(i == n);
         data.pb(row);
     }
