@@ -427,7 +427,7 @@ void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missi
 	row[missingIndex] = sample(missingNodeDistribution);
 }
 
-void fillMissingValues(network &alarm, vector<vector<int>> &data, vector<int> &missingIndexes)
+vector<int> fillMissingValues(network &alarm, vector<vector<int>> &data, vector<int> &missingIndexes)
 {
 	int rows = data.size();
 	vector<int> prev_values;
@@ -442,33 +442,14 @@ void fillMissingValues(network &alarm, vector<vector<int>> &data, vector<int> &m
 			prev_values.pb(-1);
 		}
 	}
-	for(int i=0;i<rows;i++)
-	{
-		if(prev_values[i] == -1 || prev_values[i] == data[i][missingIndexes[i]]) continue;
-		int new_value = data[i][missingIndexes[i]];
-		data[i][missingIndexes[i]] = prev_values[i];
-		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]--;
-		for(int &j : nodes[missingIndexes[i]]->get_children())
-		{
-			nodes[j]->get_count()[getCPTIndex(data[i], j)]--;
-		}
-		data[i][missingIndexes[i]] = new_value;
-		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]++;
-		for(int &j : nodes[missingIndexes[i]]->get_children())
-		{
-			nodes[j]->get_count()[getCPTIndex(data[i], j)]++;
-		}
-	}
+	return prev_values;
 }
 
-void initialize_CPT(vector<vector<int>> &data, network &alarm)
+void normalize(network &alarm)
 {
-	int rows = data.size(); int n = alarm.netSize();
+	int n = alarm.netSize();
 	for(int i=0;i<n;i++)
 	{
-		nodes[i]->get_count().resize(nodes[i]->get_CPT().size());
-		for(int j=0;j<rows;j++)
-			nodes[i]->get_count()[getCPTIndex(data[j], i)]++;
 		int prod_parent_values = nodes[i]->get_CPT().size() / nodes[i]->get_nvalues();
 		for(int j=0;j<prod_parent_values;j++)
 		{
@@ -479,6 +460,41 @@ void initialize_CPT(vector<vector<int>> &data, network &alarm)
 				nodes[i]->get_CPT()[k] =  1.0 * nodes[i]->get_count()[k] / sum;
 		}
 	}
+}
+
+void update_CPT(network &alarm, vector<vector<int>> &data, vector<int> prev_values, vector<int> missingIndexes)
+{
+	int rows = data.size();
+	for(int i=0;i<rows;i++)
+	{
+		if(prev_values[i] == -1 || prev_values[i] == data[i][missingIndexes[i]]) continue;
+		int new_value = data[i][missingIndexes[i]];
+
+		data[i][missingIndexes[i]] = prev_values[i];
+		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]--;
+		for(int &j : nodes[missingIndexes[i]]->get_children()) {
+			nodes[j]->get_count()[getCPTIndex(data[i], j)]--;
+		}
+
+		data[i][missingIndexes[i]] = new_value;
+		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]++;
+		for(int &j : nodes[missingIndexes[i]]->get_children()) {
+			nodes[j]->get_count()[getCPTIndex(data[i], j)]++;
+		}
+	}
+	normalize(alarm);
+}
+
+void initialize_CPT(vector<vector<int>> &data, network &alarm)
+{
+	int rows = data.size(); int n = alarm.netSize();
+	for(int i=0;i<n;i++)
+	{
+		nodes[i]->get_count().resize(nodes[i]->get_CPT().size());
+		for(int j=0;j<rows;j++)
+			nodes[i]->get_count()[getCPTIndex(data[j], i)]++;
+	}
+	normalize(alarm);
 }
 
 int main(int argc, char const *argv[])
