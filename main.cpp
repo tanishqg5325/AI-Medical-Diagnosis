@@ -400,11 +400,6 @@ int getCPTIndex(vector<int> &row, int nodeIndex)
 	return cptIndex;
 }
 
-double computeProbabilityGivenParents(vector<int> &row, int nodeIndex)
-{
-	return nodes[nodeIndex]->get_CPT()[getCPTIndex(row, nodeIndex)];
-}
-
 void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missingIndex)
 {
 	int n = alarm.netSize();
@@ -416,9 +411,9 @@ void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missi
 	for(int i=0;i<k;i++)
 	{
 		row[missingIndex] = i;
-		missingNodeDistribution[i] = computeProbabilityGivenParents(row, missingIndex);
+		missingNodeDistribution[i] = missingNode->get_CPT()[getCPTIndex(row, missingIndex)];
 		for(int &j : children)
-			missingNodeDistribution[i] *= computeProbabilityGivenParents(row, j);
+			missingNodeDistribution[i] *= nodes[j]->get_CPT()[getCPTIndex(row, j)];
 		normalizing_constant += missingNodeDistribution[i];
 	}
 
