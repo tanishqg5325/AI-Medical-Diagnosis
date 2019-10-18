@@ -341,7 +341,7 @@ void normalize(network &alarm)
 		int prod_parent_values = nodes[i]->get_CPT().size() / nodes[i]->get_nvalues();
 		for(int j=0;j<prod_parent_values;j++)
 		{
-			int sum = 0;
+			double sum = 0;
 			for(int k=j;k<nodes[i]->get_CPT().size();k+=prod_parent_values)
 				sum += nodes[i]->get_count()[k];
 			if(sum == 0) {
