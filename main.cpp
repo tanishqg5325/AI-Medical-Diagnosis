@@ -28,7 +28,7 @@ private:
 	int nvalues;  // Number of categories a variable represented by this node can take
 	vector<string> values; // Categories of possible values
 	vector<double> CPT; // conditional probability table as a 1-d array . Look for BIF format to understand its meaning
-	vector<int> count;
+	vector<double> count;
 
 public:
 	// Constructor- a node is initialised with its name and its categories
@@ -59,7 +59,7 @@ public:
 		return CPT;
 	}
 
-	vector<int>& get_count()
+	vector<double>& get_count()
 	{
 		return count;
 	}
@@ -376,12 +376,13 @@ void update_CPT(network &alarm, vector<vector<int>> &data, vector<int> prev_valu
 	normalize(alarm);
 }
 
-void initialize_CPT(vector<vector<int>> &data, network &alarm)
+void initialize_CPT(vector<vector<int>> &data, network &alarm, double smoothing_parameter)
 {
 	int rows = data.size(); int n = alarm.netSize();
 	for(int i=0;i<n;i++)
 	{
 		nodes[i]->get_count().resize(nodes[i]->get_CPT().size());
+		fill(nodes[i]->get_count().begin(), nodes[i]->get_count().end(), smoothing_parameter);
 		for(int j=0;j<rows;j++)
 			nodes[i]->get_count()[getCPTIndex(data[j], i)]++;
 	}
@@ -398,9 +399,6 @@ int main(int argc, char const *argv[])
     string bif_file_name = argv[1], data_file_name = argv[2]; 
     network Alarm = read_network(bif_file_name);
 	fillAllNodes(Alarm); int n = Alarm.netSize();
-
-    // list<Graph_Node>::iterator it = nodes[1];
-    // for(auto i : it->get_values()) cout << i << "\n";
 
     ifstream data_file(data_file_name);
     vector<vector<int>> data;
@@ -422,17 +420,11 @@ int main(int argc, char const *argv[])
 			row[i++] = j;
 		}
 		if(!isMissingFound) missingIndexes.pb(-1);
-		// assert(i == n);
         data.pb(row);
     }
     data_file.close();
-    // for(int i : data[0]) cout << i << " "; cout << "\n";
-    // for(auto &v : data) assert(v.size() == n);
-    // cout << data.size() << "\n";
-	// nodes[3]->get_CPT()[0] = 0.0126;
-	// write_output(Alarm, bif_file_name);
 
-	initialize_CPT(data, Alarm);
+	initialize_CPT(data, Alarm, 0.0);
 	for(int i=0;i<1000;i++)
 	{
 		vector<int> prev_values = fillMissingValues(Alarm, data, missingIndexes);
