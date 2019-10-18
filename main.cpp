@@ -8,6 +8,7 @@
 #include <assert.h>
 #include <random>
 #include <unordered_set>
+#include <iomanip>
 #define pb push_back
 using namespace std;
 
@@ -27,6 +28,7 @@ private:
 	int nvalues;  // Number of categories a variable represented by this node can take
 	vector<string> values; // Categories of possible values
 	vector<double> CPT; // conditional probability table as a 1-d array . Look for BIF format to understand its meaning
+	vector<int> count;
 
 public:
 	// Constructor- a node is initialised with its name and its categories
@@ -55,6 +57,11 @@ public:
 	vector<double>& get_CPT()
 	{
 		return CPT;
+	}
+
+	vector<int>& get_count()
+	{
+		return count;
 	}
 
 	int get_nvalues()
@@ -101,49 +108,49 @@ public:
 	void createCPT(vector<vector<int>> & data,  float smoothing_parameter, int my_column_index){//create CPT table for this node from the data given to you assuming data is complete
 		// since we have not made any provision in the data structure to store the column_number for the given node, it must be inputted from here
 		// int num_entries = 1;
-
-		int cum_prod[Parents.size()+1];
+		int numParents = Parents.size();
+		int cum_prod[numParents+1];
 		// for(int i = Parents.size()-1;i>=0;i--)num_entries = num_entries * nodes[Parents[i]]->get_nvalues();
 		// num_entries = num_entries * nvalues;
-
-		if(Parents.size() > 0){
-			cum_prod[0] = nodes[Parents[Parents.size()-1]]->get_nvalues();
-			for(int i = 1;i<Parents.size();i++)cum_prod[i] = nodes[Parents[Parents.size()-1-i]]->get_nvalues() * cum_prod[i-1];
-			cum_prod[Parents.size()] = cum_prod[Parents.size()-1] * nvalues;
+		
+		if(numParents > 0){
+			cum_prod[0] = nodes[Parents[numParents-1]]->get_nvalues();
+			for(int i=1;i<numParents;i++) cum_prod[i] = nodes[Parents[numParents-1-i]]->get_nvalues() * cum_prod[i-1];
+			cum_prod[numParents] = cum_prod[numParents-1] * nvalues;
 		}
 		else{
 			cum_prod[0] = nvalues;
 		}
-		CPT.reserve(cum_prod[Parents.size()]);
+		
+		// CPT.reserve(cum_prod[numParents]);  // CPT is already initialized in read_network
 
 		vector<vector<unordered_set<int>>> rowsWithParentsValue;
+		rowsWithParentsValue.reserve(numParents);
 		// rowsWithParentsValue[i][j] gives a vector of row numbers of indices in which the value of Parent[i] equals j
-		for(int i = 0;i<Parents.size();i++){
+		for(int i=0;i<numParents;i++){
 			vector<unordered_set<int>> temp;
+			temp.reserve(nodes[Parents[i]]->get_nvalues());
 			for(int j = 0; j< nodes[Parents[i]]->get_nvalues();j++){
-					
-					unordered_set<int> set_i_j = getRowNumsWithCondition(data, Parents[i],j);
-					temp.push_back(set_i_j);
+					unordered_set<int> set_i_j = getRowNumsWithCondition(data, Parents[i], j);
+					temp.pb(set_i_j);
 			}
-			rowsWithParentsValue.push_back(temp);
+			rowsWithParentsValue.pb(temp);
 		}
 		
-
-		
-		for(int i = 0;i<cum_prod[Parents.size()];i++){
+		for(int i = 0;i<cum_prod[numParents];i++){
 			int row_num;
 
-			if(Parents.size() > 0){
-				row_num = i / cum_prod[Parents.size()-1];//now going to update the value for value of this nodes parameter = row_number
+			if(numParents > 0){
+				row_num = i / cum_prod[numParents-1];//now going to update the value for value of this nodes parameter = row_number
 			}
 			else{
 				row_num  = i;
 			}
 			unordered_set<int> set_satisfying_parents;
-			set_satisfying_parents.clear();
-			for(int l = Parents.size() - 1; l>=0;l--){
+			// set_satisfying_parents.clear();
+			for(int l=numParents-1;l>=0;l--){
 				//value of Parents[l] -> lies at ( Parents.size() -1 - l )th place to the left from the right most end of the representation
-				int index_in_representation = Parents.size() - l - 1;
+				int index_in_representation = numParents - l - 1;
 
 				int parent_value;
 				if(index_in_representation == 0){
@@ -154,16 +161,15 @@ public:
 				}
 				// at this point we have the value of Parents[l] (i.e the one at index_in_representation)
 				
-				if(l==Parents.size()-1){
+				if(l==numParents-1){
 					set_satisfying_parents = rowsWithParentsValue[l][parent_value];
-
 				}
 				else{
 					unordered_set<int> uset = rowsWithParentsValue[l][parent_value];
 					vector<int> values_to_remove;
 					for(unordered_set<int>::iterator it = set_satisfying_parents.begin();it!=set_satisfying_parents.end();it ++){
 						if( uset.find(*it) == uset.end()){//key not found
-							values_to_remove.push_back(*it);
+							values_to_remove.pb(*it);
 						}
 					}
 
@@ -171,9 +177,7 @@ public:
 						set_satisfying_parents.erase(values_to_remove[val_i]);
 					}
 					//effectively we took the intersection
-
 				}
-				
 			}
 
 			// at this point we have set_satisfying_parents() -> indices of rows which satisfy the parents conditions for this column
@@ -182,9 +186,9 @@ public:
 				if( data[*it][my_column_index] == row_num)numerator  = numerator + 1;
 			}
 
-			double denominator = (float)(set_satisfying_parents.size());
+			double denominator = (double)(set_satisfying_parents.size());
 
-			if(Parents.size()==0){
+			if(numParents == 0){
 				
 				numerator = (double)( getRowNumsWithCondition(data,my_column_index,row_num).size());
 				denominator = (double)(data.size());
@@ -197,10 +201,10 @@ public:
 
 	}
 
-	unordered_set<int> getRowNumsWithCondition(vector<vector<int>>& data, int nodeIndex,int nodeValue){
+	unordered_set<int> getRowNumsWithCondition(vector<vector<int>>& data, int nodeIndex, int nodeValue){
 		unordered_set<int> answer;
-		for(int i = 0 ;i<data.size();i++){
-			if(data[i][nodeIndex]==nodeValue){
+		for(int i = 0;i<data.size();i++){
+			if(data[i][nodeIndex] == nodeValue){
 				answer.insert(i);
 			}
 		}
@@ -280,7 +284,7 @@ network read_network(string file_name)
     	if(temp.compare("variable") == 0)
     	{
     		ss >> name;
-    		getline (myfile,line);
+    		getline(myfile, line);
     		stringstream ss2;
     		ss2.str(line);
     		for(int i=0;i<4;i++)
@@ -307,11 +311,10 @@ network read_network(string file_name)
                 listIt1 = Alarm.search_node(temp);
                 listIt1->add_child(index);
 				parents.pb(Alarm.get_index(temp));
-    			// values.pb(temp);
     			ss >> temp;
     		}
             listIt->set_Parents(parents);
-    		getline (myfile,line);
+    		getline(myfile, line);
     		stringstream ss2;
             
     		ss2.str(line);
@@ -330,6 +333,33 @@ network read_network(string file_name)
   	return Alarm;
 }
 
+void write_output(network &Alarm, string input_file_name) {
+	ifstream input_file(input_file_name);
+	string line, temp, output;
+	list<Graph_Node>::iterator it;
+	while(!input_file.eof()) {
+		stringstream ss;
+		getline(input_file, line);
+		ss.str(line); ss >> temp;
+		output += line + "\n";
+		if(temp.compare("probability") == 0) {
+			ss >> temp >> temp;
+			getline(input_file, line); getline(input_file, line);
+			output += "\ttable ";
+			it = Alarm.search_node(temp);
+			for(double &i : it->get_CPT()) {
+				stringstream ss2;
+				ss2 << fixed << setprecision(4) << i;
+				output += ss2.str() + " ";
+			}
+			output += ";\n}\n";
+		}
+	}
+	input_file.close();
+	ofstream output_file("solved_alarm.bif");
+	output_file << output;
+	output_file.close();
+}
 
 void fillAllNodes(network &Alarm)
 {
@@ -355,7 +385,7 @@ int sample(vector<double> &v)
 	assert(1 == 0);
 }
 
-double computeProbabilityGivenParents(network &alarm, vector<int> &row, int nodeIndex)
+int getCPTIndex(vector<int> &row, int nodeIndex)
 {
 	list<Graph_Node>::iterator node = nodes[nodeIndex];
 	vector<int> &parents = node->get_Parents();
@@ -367,7 +397,12 @@ double computeProbabilityGivenParents(network &alarm, vector<int> &row, int node
 	}
 	cptIndex += row[nodeIndex] * prev;
 	assert(cptIndex < node->get_CPT().size());
-	return node->get_CPT()[cptIndex];
+	return cptIndex;
+}
+
+double computeProbabilityGivenParents(vector<int> &row, int nodeIndex)
+{
+	return nodes[nodeIndex]->get_CPT()[getCPTIndex(row, nodeIndex)];
 }
 
 void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missingIndex)
@@ -381,9 +416,9 @@ void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missi
 	for(int i=0;i<k;i++)
 	{
 		row[missingIndex] = i;
-		missingNodeDistribution[i] = computeProbabilityGivenParents(alarm, row, missingIndex);
+		missingNodeDistribution[i] = computeProbabilityGivenParents(row, missingIndex);
 		for(int &j : children)
-			missingNodeDistribution[i] *= computeProbabilityGivenParents(alarm, row, j);
+			missingNodeDistribution[i] *= computeProbabilityGivenParents(row, j);
 		normalizing_constant += missingNodeDistribution[i];
 	}
 
@@ -395,9 +430,55 @@ void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missi
 void fillMissingValues(network &alarm, vector<vector<int>> &data, vector<int> &missingIndexes)
 {
 	int rows = data.size();
+	vector<int> prev_values;
+	prev_values.reserve(rows);
 	for(int i=0;i<rows;i++)
-		if(missingIndexes[i] != -1)
+	{
+		if(missingIndexes[i] != -1) {
+			prev_values.pb(data[i][missingIndexes[i]]);
 			computeProbabilityGivenAllOther(alarm, data[i], missingIndexes[i]);
+		}
+		else {
+			prev_values.pb(-1);
+		}
+	}
+	for(int i=0;i<rows;i++)
+	{
+		if(prev_values[i] == -1 || prev_values[i] == data[i][missingIndexes[i]]) continue;
+		int new_value = data[i][missingIndexes[i]];
+		data[i][missingIndexes[i]] = prev_values[i];
+		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]--;
+		for(int &j : nodes[missingIndexes[i]]->get_children())
+		{
+			nodes[j]->get_count()[getCPTIndex(data[i], j)]--;
+		}
+		data[i][missingIndexes[i]] = new_value;
+		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]++;
+		for(int &j : nodes[missingIndexes[i]]->get_children())
+		{
+			nodes[j]->get_count()[getCPTIndex(data[i], j)]++;
+		}
+	}
+}
+
+void initialize_CPT(vector<vector<int>> &data, network &alarm)
+{
+	int rows = data.size(); int n = alarm.netSize();
+	for(int i=0;i<n;i++)
+	{
+		nodes[i]->get_count().resize(nodes[i]->get_CPT().size());
+		for(int j=0;j<rows;j++)
+			nodes[i]->get_count()[getCPTIndex(data[j], i)]++;
+		int prod_parent_values = nodes[i]->get_CPT().size() / nodes[i]->get_nvalues();
+		for(int j=0;j<prod_parent_values;j++)
+		{
+			int sum = 0;
+			for(int k=j;k<nodes[i]->get_CPT().size();k+=prod_parent_values)
+				sum += nodes[i]->get_count()[k];
+			for(int k=j;k<nodes[i]->get_CPT().size();k+=prod_parent_values)
+				nodes[i]->get_CPT()[k] =  1.0 * nodes[i]->get_count()[k] / sum;
+		}
+	}
 }
 
 int main(int argc, char const *argv[])
@@ -417,6 +498,7 @@ int main(int argc, char const *argv[])
     ifstream data_file(data_file_name);
     vector<vector<int>> data;
 	vector<int> missingIndexes;
+	data.reserve(11100); missingIndexes.reserve(11100);
     string line, word; vector<int> row(n);
     while(getline(data_file, line))
     {
@@ -439,5 +521,7 @@ int main(int argc, char const *argv[])
     // for(int i : data[0]) cout << i << " "; cout << "\n";
     // for(auto &v : data) assert(v.size() == n);
     // cout << data.size() << "\n";
+	// nodes[3]->get_CPT()[0] = 0.0126;
+	// write_output(Alarm, bif_file_name);
     return 0;
 }
