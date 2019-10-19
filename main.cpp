@@ -244,7 +244,7 @@ void write_output(string input_file_name) {
 			output += ";\n}\n";
 		}
 	}
-	input_file.close();
+	input_file.close(); output.pop_back();
 	ofstream output_file("solved_alarm.bif");
 	output_file << output;
 	output_file.close();
