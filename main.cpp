@@ -1,13 +1,9 @@
 #include <iostream>
-#include <string>
-#include <vector>
 #include <list>
 #include <fstream>
 #include <sstream>
-#include <cstdlib>
 #include <assert.h>
 #include <random>
-#include <unordered_set>
 #include <iomanip>
 #define pb push_back
 using namespace std;
@@ -162,9 +158,10 @@ public:
     }
 };
 
-network read_network(string file_name)
+network alarm;
+
+void read_network(string file_name)
 {
-	network Alarm;
 	string line, temp, name;
   	ifstream myfile(file_name); 
   	vector<string> values;
@@ -189,21 +186,21 @@ network read_network(string file_name)
     			ss2 >> temp;
     		}
     		Graph_Node new_node(name, values.size(), values);
-    		Alarm.addNode(new_node);
+			alarm.addNode(new_node);
     	}
     	else if(temp.compare("probability") == 0)
     	{
     		ss >> temp >> temp;
             list<Graph_Node>::iterator listIt, listIt1;
-    		listIt = Alarm.search_node(temp);
-            int index = Alarm.get_index(temp);
+			listIt = alarm.search_node(temp);
+            int index = alarm.get_index(temp);
             ss >> temp;
             values.clear(); vector<int> parents;
     		while(temp.compare(")") != 0)
     		{
-                listIt1 = Alarm.search_node(temp);
+                listIt1 = alarm.search_node(temp);
                 listIt1->add_child(index);
-				parents.pb(Alarm.get_index(temp));
+				parents.pb(alarm.get_index(temp));
     			ss >> temp;
     		}
             listIt->set_Parents(parents);
@@ -223,10 +220,9 @@ network read_network(string file_name)
     	}
     }
     myfile.close();
-  	return Alarm;
 }
 
-void write_output(network &Alarm, string input_file_name) {
+void write_output(string input_file_name) {
 	ifstream input_file(input_file_name);
 	string line, temp, output;
 	list<Graph_Node>::iterator it;
@@ -239,7 +235,7 @@ void write_output(network &Alarm, string input_file_name) {
 			ss >> temp >> temp;
 			getline(input_file, line); getline(input_file, line);
 			output += "\ttable ";
-			it = Alarm.search_node(temp);
+			it = alarm.search_node(temp);
 			for(double &i : it->get_CPT()) {
 				stringstream ss2;
 				ss2 << fixed << setprecision(4) << i;
@@ -254,10 +250,10 @@ void write_output(network &Alarm, string input_file_name) {
 	output_file.close();
 }
 
-void fillAllNodes(network &Alarm)
+void fillAllNodes()
 {
-	list<Graph_Node>::iterator it = Alarm.get_nth_node(0);
-	int n = Alarm.netSize(); nodes.reserve(n);
+	list<Graph_Node>::iterator it = alarm.get_nth_node(0);
+	int n = alarm.netSize(); nodes.reserve(n);
 	for(int i=0;i<n;i++) nodes.pb(it++);
 }
 
@@ -268,7 +264,6 @@ uniform_real_distribution<double> distribution(0.0, 1.0);
 int sample(vector<double> &v)
 {
 	int n = v.size();
-	if(n == 1) return 0;
 	double number = distribution(generator), sum = 0;
 	for(int i=0;i<n;i++)
 	{
@@ -293,7 +288,7 @@ int getCPTIndex(vector<int> &row, int nodeIndex)
 	return cptIndex;
 }
 
-void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missingIndex)
+void computeProbabilityGivenAllOther(vector<int> &row, int missingIndex)
 {
 	int n = alarm.netSize();
 	list<Graph_Node>::iterator missingNode = nodes[missingIndex];
@@ -315,7 +310,7 @@ void computeProbabilityGivenAllOther(network &alarm, vector<int> &row, int missi
 	row[missingIndex] = sample(missingNodeDistribution);
 }
 
-vector<int> fillMissingValues(network &alarm, vector<vector<int>> &data, vector<int> &missingIndexes)
+vector<int> fillMissingValues(vector<vector<int>> &data, vector<int> &missingIndexes)
 {
 	int rows = data.size();
 	vector<int> prev_values;
@@ -324,7 +319,7 @@ vector<int> fillMissingValues(network &alarm, vector<vector<int>> &data, vector<
 	{
 		if(missingIndexes[i] != -1) {
 			prev_values.pb(data[i][missingIndexes[i]]);
-			computeProbabilityGivenAllOther(alarm, data[i], missingIndexes[i]);
+			computeProbabilityGivenAllOther(data[i], missingIndexes[i]);
 		}
 		else {
 			prev_values.pb(-1);
@@ -333,15 +328,16 @@ vector<int> fillMissingValues(network &alarm, vector<vector<int>> &data, vector<
 	return prev_values;
 }
 
-void normalize(network &alarm)
+void normalize()
 {
-	int n = alarm.netSize();
+	int n = alarm.netSize(), prod_parent_values;
+	double sum;
 	for(int i=0;i<n;i++)
 	{
-		int prod_parent_values = nodes[i]->get_CPT().size() / nodes[i]->get_nvalues();
+		prod_parent_values = nodes[i]->get_CPT().size() / nodes[i]->get_nvalues();
 		for(int j=0;j<prod_parent_values;j++)
 		{
-			double sum = 0;
+			sum = 0;
 			for(int k=j;k<nodes[i]->get_CPT().size();k+=prod_parent_values)
 				sum += nodes[i]->get_count()[k];
 			if(sum == 0) {
@@ -353,13 +349,13 @@ void normalize(network &alarm)
 	}
 }
 
-void update_CPT(network &alarm, vector<vector<int>> &data, vector<int> prev_values, vector<int> missingIndexes)
+void update_CPT(vector<vector<int>> &data, vector<int> prev_values, vector<int> missingIndexes)
 {
-	int rows = data.size();
+	int rows = data.size(), new_value;
 	for(int i=0;i<rows;i++)
 	{
 		if(prev_values[i] == -1 || prev_values[i] == data[i][missingIndexes[i]]) continue;
-		int new_value = data[i][missingIndexes[i]];
+		new_value = data[i][missingIndexes[i]];
 
 		data[i][missingIndexes[i]] = prev_values[i];
 		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]--;
@@ -373,10 +369,10 @@ void update_CPT(network &alarm, vector<vector<int>> &data, vector<int> prev_valu
 			nodes[j]->get_count()[getCPTIndex(data[i], j)]++;
 		}
 	}
-	normalize(alarm);
+	normalize();
 }
 
-void initialize_CPT(vector<vector<int>> &data, network &alarm, double smoothing_parameter)
+void initialize_CPT(vector<vector<int>> &data, double smoothing_parameter)
 {
 	int rows = data.size(); int n = alarm.netSize();
 	for(int i=0;i<n;i++)
@@ -386,7 +382,7 @@ void initialize_CPT(vector<vector<int>> &data, network &alarm, double smoothing_
 		for(int j=0;j<rows;j++)
 			nodes[i]->get_count()[getCPTIndex(data[j], i)]++;
 	}
-	normalize(alarm);
+	normalize();
 }
 
 int main(int argc, char const *argv[])
@@ -397,21 +393,22 @@ int main(int argc, char const *argv[])
     assert(argc == 3);
 
     string bif_file_name = argv[1], data_file_name = argv[2]; 
-    network Alarm = read_network(bif_file_name);
-	fillAllNodes(Alarm); int n = Alarm.netSize();
+    read_network(bif_file_name);
+	fillAllNodes(); int n = alarm.netSize();
 
     ifstream data_file(data_file_name);
     vector<vector<int>> data;
-	vector<int> missingIndexes;
+	vector<int> missingIndexes, prev_values;
 	data.reserve(11100); missingIndexes.reserve(11100);
     string line, word; vector<int> row(n);
+	bool isMissingFound; int i, j;
     while(getline(data_file, line))
     {
-		stringstream ss(line); int i = 0;
-		bool isMissingFound = false;
+		stringstream ss(line); i = 0;
+		isMissingFound = false;
 		while(ss >> word)
 		{
-			int j = nodes[i]->getIndexForValue(word);
+			j = nodes[i]->getIndexForValue(word);
 			if(j == -1) {
 				missingIndexes.pb(i);
 				isMissingFound = true;
@@ -424,12 +421,14 @@ int main(int argc, char const *argv[])
     }
     data_file.close();
 
-	initialize_CPT(data, Alarm, 0.0);
-	for(int i=0;i<1000;i++)
+	initialize_CPT(data, 0.1);
+	// double max_time = 115.0;
+	// while(((double)clock()/CLOCKS_PER_SEC) < max_time)
+	for(int i=0;i<12;i++)
 	{
-		vector<int> prev_values = fillMissingValues(Alarm, data, missingIndexes);
-		update_CPT(Alarm, data, prev_values, missingIndexes);
+		prev_values = fillMissingValues(data, missingIndexes);
+		update_CPT(data, prev_values, missingIndexes);
 	}
-	write_output(Alarm, bif_file_name);
+	write_output(bif_file_name);
     return 0;
 }
