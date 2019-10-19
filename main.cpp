@@ -1,9 +1,9 @@
 #include <iostream>
 #include <list>
+#include <vector>
 #include <fstream>
 #include <sstream>
 #include <assert.h>
-#include <random>
 #include <iomanip>
 #define pb push_back
 using namespace std;
@@ -257,22 +257,6 @@ void fillAllNodes()
 	for(int i=0;i<n;i++) nodes.pb(it++);
 }
 
-default_random_engine generator;
-uniform_real_distribution<double> distribution(0.0, 1.0);
-
-// given a probability distribution in the form of a vector, returns the index of sampled value
-int sample(vector<double> &v)
-{
-	int n = v.size();
-	double number = distribution(generator), sum = 0;
-	for(int i=0;i<n;i++)
-	{
-		sum += v[i];
-		if(number <= sum) return i;
-	}
-	assert(1 == 0);
-}
-
 int getCPTIndex(vector<int> &row, int nodeIndex)
 {
 	list<Graph_Node>::iterator node = nodes[nodeIndex];
@@ -288,7 +272,7 @@ int getCPTIndex(vector<int> &row, int nodeIndex)
 	return cptIndex;
 }
 
-void computeProbabilityGivenAllOther(vector<int> &row, int missingIndex)
+vector<double> computeProbabilityGivenAllOther(vector<int> &row, int missingIndex)
 {
 	int n = alarm.netSize();
 	list<Graph_Node>::iterator missingNode = nodes[missingIndex];
@@ -307,25 +291,25 @@ void computeProbabilityGivenAllOther(vector<int> &row, int missingIndex)
 
 	for(int i=0;i<k;i++)
 		missingNodeDistribution[i] /= normalizing_constant;
-	row[missingIndex] = sample(missingNodeDistribution);
+	return missingNodeDistribution;
 }
 
-vector<int> fillMissingValues(vector<vector<int>> &data, vector<int> &missingIndexes)
+vector<vector<double>> fillMissingValues(vector<vector<int>> &data, vector<int> &missingIndexes)
 {
 	int rows = data.size();
-	vector<int> prev_values;
-	prev_values.reserve(rows);
+	vector<vector<double>> miss_dist;
+	miss_dist.reserve(rows);
+	vector<double> tmp;
 	for(int i=0;i<rows;i++)
 	{
 		if(missingIndexes[i] != -1) {
-			prev_values.pb(data[i][missingIndexes[i]]);
-			computeProbabilityGivenAllOther(data[i], missingIndexes[i]);
+			miss_dist.pb(computeProbabilityGivenAllOther(data[i], missingIndexes[i]));
 		}
 		else {
-			prev_values.pb(-1);
+			miss_dist.pb(tmp);
 		}
 	}
-	return prev_values;
+	return miss_dist;
 }
 
 void normalize()
@@ -349,38 +333,50 @@ void normalize()
 	}
 }
 
-void update_CPT(vector<vector<int>> &data, vector<int> prev_values, vector<int> missingIndexes)
+void update_CPT(vector<vector<int>> &data, vector<vector<double>> &prev_miss_dist, vector<vector<double>> &now_miss_dist, vector<int> missingIndexes)
 {
 	int rows = data.size(), new_value;
 	for(int i=0;i<rows;i++)
 	{
-		if(prev_values[i] == -1 || prev_values[i] == data[i][missingIndexes[i]]) continue;
-		new_value = data[i][missingIndexes[i]];
-
-		data[i][missingIndexes[i]] = prev_values[i];
-		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]--;
-		for(int &j : nodes[missingIndexes[i]]->get_children()) {
-			nodes[j]->get_count()[getCPTIndex(data[i], j)]--;
-		}
-
-		data[i][missingIndexes[i]] = new_value;
-		nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])]++;
-		for(int &j : nodes[missingIndexes[i]]->get_children()) {
-			nodes[j]->get_count()[getCPTIndex(data[i], j)]++;
+		if(prev_miss_dist[i].empty() || prev_miss_dist[i] == now_miss_dist[i]) continue;
+		int k = nodes[missingIndexes[i]]->get_nvalues();
+		for(int j=0;j<k;j++)
+		{
+			data[i][missingIndexes[i]] = j;
+			nodes[missingIndexes[i]]->get_count()[getCPTIndex(data[i], missingIndexes[i])] += (now_miss_dist[i][j] - prev_miss_dist[i][j]);
+			for(int &c : nodes[missingIndexes[i]]->get_children()) {
+				nodes[c]->get_count()[getCPTIndex(data[i], c)] += (now_miss_dist[i][j] - prev_miss_dist[i][j]);
+			}
 		}
 	}
 	normalize();
 }
 
-void initialize_CPT(vector<vector<int>> &data, double smoothing_parameter)
+void initialize_CPT(vector<vector<int>> &data, vector<vector<double>> &prev_miss_dist, vector<int> &missingIndexes, double smoothing_parameter)
 {
 	int rows = data.size(); int n = alarm.netSize();
 	for(int i=0;i<n;i++)
 	{
 		nodes[i]->get_count().resize(nodes[i]->get_CPT().size());
 		fill(nodes[i]->get_count().begin(), nodes[i]->get_count().end(), smoothing_parameter);
-		for(int j=0;j<rows;j++)
-			nodes[i]->get_count()[getCPTIndex(data[j], i)]++;
+	}
+	for(int i=0;i<rows;i++)
+	{
+		if(missingIndexes[i] != -1)
+		{
+			int k = nodes[missingIndexes[i]]->get_nvalues();
+			for(int j=0;j<k;j++)
+			{
+				data[i][missingIndexes[i]] = j;
+				for(int l=0;l<n;l++)
+					nodes[l]->get_count()[getCPTIndex(data[i], l)] += prev_miss_dist[i][j];
+			}
+		}
+		else
+		{
+			for(int l=0;l<n;l++)
+				nodes[l]->get_count()[getCPTIndex(data[i], l)]++;
+		}
 	}
 	normalize();
 }
@@ -398,8 +394,9 @@ int main(int argc, char const *argv[])
 
     ifstream data_file(data_file_name);
     vector<vector<int>> data;
-	vector<int> missingIndexes, prev_values;
-	data.reserve(11100); missingIndexes.reserve(11100);
+	vector<vector<double>> prev_miss_dist, now_miss_dist;
+	vector<int> missingIndexes;
+	data.reserve(11100); missingIndexes.reserve(11100); prev_miss_dist.reserve(11100);
     string line, word; vector<int> row(n);
 	bool isMissingFound; int i, j;
     while(getline(data_file, line))
@@ -412,22 +409,29 @@ int main(int argc, char const *argv[])
 			if(j == -1) {
 				missingIndexes.pb(i);
 				isMissingFound = true;
-				j = 0;
+				int k = nodes[i]->get_nvalues();
+				vector<double> dist(k, 1.0/k);
+				prev_miss_dist.pb(dist);
 			}
 			row[i++] = j;
 		}
-		if(!isMissingFound) missingIndexes.pb(-1);
+		if(!isMissingFound) {
+			missingIndexes.pb(-1);
+			vector<double> dist;
+			prev_miss_dist.pb(dist);
+		}
         data.pb(row);
     }
     data_file.close();
 
-	initialize_CPT(data, 0.1);
-	// double max_time = 115.0;
-	// while(((double)clock()/CLOCKS_PER_SEC) < max_time)
-	for(int i=0;i<12;i++)
+	initialize_CPT(data, prev_miss_dist, missingIndexes, 0.05);
+	double max_time = 115.0;
+	while(((double)clock()/CLOCKS_PER_SEC) < max_time)
+	// for(int i=0;i<500;i++)
 	{
-		prev_values = fillMissingValues(data, missingIndexes);
-		update_CPT(data, prev_values, missingIndexes);
+		now_miss_dist = fillMissingValues(data, missingIndexes);
+		update_CPT(data, prev_miss_dist, now_miss_dist, missingIndexes);
+		prev_miss_dist = now_miss_dist;
 	}
 	write_output(bif_file_name);
     return 0;
