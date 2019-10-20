@@ -400,13 +400,34 @@ vector<vector<double>> computePrior(vector<vector<int>> &data)
 	return prior;
 }
 
+vector<int> getParentsFromIndex(int ind, int nodeIndex)
+{
+	vector<int> &parents = nodes[nodeIndex]->get_Parents();
+	int numParents = parents.size(), prev = 1;
+	vector<int> pars(numParents);
+	for(int l=numParents-1;l>=0;l--)
+	{
+		prev *= nodes[parents[l]]->get_nvalues();
+		pars[l] = ind % prev;
+		ind /= prev;
+	}
+	return pars;
+}
+
+int numChanges(vector<int> &v1, vector<int> v2)
+{
+	int ans = 0, n = v1.size();
+	for(int i=0;i<n;i++) if(v1[i] != v2[i]) ans++;
+	return ans;
+}
+
 void handleWithNoParents(double smoothing_parameter)
 {
 	int prod_parent_values, n = alarm.netSize(); double sum;
 	for(int i=0;i<n;i++)
 	{
 		prod_parent_values = nodes[i]->get_CPT().size() / nodes[i]->get_nvalues();
-		vector<bool> v(nodes[i]->get_CPT().size(), 0);
+		vector<bool> v(prod_parent_values, 0);
 		for(int j=0;j<prod_parent_values;j++)
 		{
 			bool flag = 1;
@@ -414,29 +435,38 @@ void handleWithNoParents(double smoothing_parameter)
 				if(nodes[i]->get_count()[k] != smoothing_parameter)
 					{flag = 0; break;}
 
-			if(flag == 1) {
-				for(int k=j;k<nodes[i]->get_CPT().size();k+=prod_parent_values)
-					v[k] = 1;
-			}
+			if(flag == 1) v[j] = 1;
 		}
-		for(int j=0;j<nodes[i]->get_nvalues();j++)
+		for(int j=0;j<prod_parent_values;j++)
 		{
-			double sum = 0; int cnt = 0;
-			for(int k=0;k<prod_parent_values;k++)
+			if(v[j] == 1)
 			{
-				int ind = j * prod_parent_values + k;
-				if(!v[ind])
+				int min_changes = INT32_MAX;
+				vector<int> pars = getParentsFromIndex(j, i);
+				for(int k=0;k<prod_parent_values;k++)
 				{
-					cnt++;
-					sum += nodes[i]->get_CPT()[ind];
+					if(!v[k])
+						min_changes = min(min_changes, numChanges(pars, getParentsFromIndex(k, i)));
 				}
-			}
-			if(cnt == 0) continue;
-			for(int k=0;k<prod_parent_values;k++)
-			{
-				int ind = j * prod_parent_values + k;
-				if(v[ind])
-					nodes[i]->get_CPT()[ind] = sum / cnt;
+				if(min_changes == INT32_MAX) continue;
+				bool toConsider[prod_parent_values]{};
+				for(int k=0;k<prod_parent_values;k++)
+					if(!v[k] && min_changes == numChanges(pars, getParentsFromIndex(k, i)))
+						toConsider[k] = 1;
+				for(int k=0;k<nodes[i]->get_nvalues();k++)
+				{
+					double sum = 0; int cnt = 0;
+					for(int l=0;l<prod_parent_values;l++)
+					{
+						if(toConsider[l])
+						{
+							int ind = k * prod_parent_values + l;
+							sum += nodes[i]->get_CPT()[ind];
+							cnt++;
+						}
+					}
+					nodes[i]->get_CPT()[k * prod_parent_values + j] = sum / cnt;
+				}
 			}
 		}
 	}
@@ -486,7 +516,7 @@ int main(int argc, char const *argv[])
 
 	double smoothing_parameter = 0.05;
 	initialize_CPT(data, prev_miss_dist, missingIndexes, smoothing_parameter);
-	double max_time = 115.0;
+	double max_time = 110.0;
 	while(((double)clock()/CLOCKS_PER_SEC) < max_time)
 	// for(int i=0;i<20;i++)
 	{
