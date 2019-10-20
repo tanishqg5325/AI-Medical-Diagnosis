@@ -4,6 +4,7 @@
 #include <fstream>
 #include <sstream>
 #include <assert.h>
+#include <math.h>
 #include <iomanip>
 #define pb push_back
 using namespace std;
@@ -237,6 +238,7 @@ void write_output(string input_file_name) {
 			output += "\ttable ";
 			it = alarm.search_node(temp);
 			for(double &i : it->get_CPT()) {
+				if(fabs(i) < 1e-4) i = 0.0001;
 				stringstream ss2;
 				ss2 << fixed << setprecision(4) << i;
 				output += ss2.str() + " ";
@@ -381,6 +383,65 @@ void initialize_CPT(vector<vector<int>> &data, vector<vector<double>> &prev_miss
 	normalize();
 }
 
+vector<vector<double>> computePrior(vector<vector<int>> &data)
+{
+	int n = alarm.netSize(), rows = data.size();
+	vector<vector<double>> prior(n);
+	for(int i=0;i<n;i++) prior[i].resize(nodes[i]->get_nvalues());
+	for(int i=0;i<rows;i++)
+		for(int j=0;j<n;j++)
+			if(data[i][j] != -1) prior[j][data[i][j]]++;
+	for(int i=0;i<n;i++)
+	{
+		double sum = 0; int k = nodes[i]->get_nvalues();
+		for(int j=0;j<k;j++) sum += prior[i][j];
+		for(int j=0;j<k;j++) prior[i][j] /= sum;
+	}
+	return prior;
+}
+
+void handleWithNoParents(double smoothing_parameter)
+{
+	int prod_parent_values, n = alarm.netSize(); double sum;
+	for(int i=0;i<n;i++)
+	{
+		prod_parent_values = nodes[i]->get_CPT().size() / nodes[i]->get_nvalues();
+		vector<bool> v(nodes[i]->get_CPT().size(), 0);
+		for(int j=0;j<prod_parent_values;j++)
+		{
+			bool flag = 1;
+			for(int k=j;k<nodes[i]->get_CPT().size();k+=prod_parent_values)
+				if(nodes[i]->get_count()[k] != smoothing_parameter)
+					{flag = 0; break;}
+
+			if(flag == 1) {
+				for(int k=j;k<nodes[i]->get_CPT().size();k+=prod_parent_values)
+					v[k] = 1;
+			}
+		}
+		for(int j=0;j<nodes[i]->get_nvalues();j++)
+		{
+			double sum = 0; int cnt = 0;
+			for(int k=0;k<prod_parent_values;k++)
+			{
+				int ind = j * prod_parent_values + k;
+				if(!v[ind])
+				{
+					cnt++;
+					sum += nodes[i]->get_CPT()[ind];
+				}
+			}
+			if(cnt == 0) continue;
+			for(int k=0;k<prod_parent_values;k++)
+			{
+				int ind = j * prod_parent_values + k;
+				if(v[ind])
+					nodes[i]->get_CPT()[ind] = sum / cnt;
+			}
+		}
+	}
+}
+
 int main(int argc, char const *argv[])
 {
     ios_base::sync_with_stdio(false);
@@ -409,22 +470,22 @@ int main(int argc, char const *argv[])
 			if(j == -1) {
 				missingIndexes.pb(i);
 				isMissingFound = true;
-				int k = nodes[i]->get_nvalues();
-				vector<double> dist(k, 1.0/k);
-				prev_miss_dist.pb(dist);
 			}
 			row[i++] = j;
 		}
-		if(!isMissingFound) {
-			missingIndexes.pb(-1);
-			vector<double> dist;
-			prev_miss_dist.pb(dist);
-		}
+		if(!isMissingFound) missingIndexes.pb(-1);
         data.pb(row);
     }
-    data_file.close();
+    data_file.close(); vector<double> temp; int rows = data.size();
+	vector<vector<double>> prior = computePrior(data);
+	for(int i=0;i<rows;i++)
+	{
+		if(missingIndexes[i] != -1) prev_miss_dist.pb(prior[missingIndexes[i]]);
+		else prev_miss_dist.pb(temp);
+	}
 
-	initialize_CPT(data, prev_miss_dist, missingIndexes, 0.05);
+	double smoothing_parameter = 0.05;
+	initialize_CPT(data, prev_miss_dist, missingIndexes, smoothing_parameter);
 	double max_time = 115.0;
 	while(((double)clock()/CLOCKS_PER_SEC) < max_time)
 	// for(int i=0;i<500;i++)
@@ -433,6 +494,9 @@ int main(int argc, char const *argv[])
 		update_CPT(data, prev_miss_dist, now_miss_dist, missingIndexes);
 		prev_miss_dist = now_miss_dist;
 	}
+
+	handleWithNoParents(smoothing_parameter);
+
 	write_output(bif_file_name);
     return 0;
 }
