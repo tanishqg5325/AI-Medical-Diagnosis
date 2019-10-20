@@ -488,7 +488,7 @@ int main(int argc, char const *argv[])
 	initialize_CPT(data, prev_miss_dist, missingIndexes, smoothing_parameter);
 	double max_time = 115.0;
 	while(((double)clock()/CLOCKS_PER_SEC) < max_time)
-	// for(int i=0;i<500;i++)
+	// for(int i=0;i<20;i++)
 	{
 		now_miss_dist = fillMissingValues(data, missingIndexes);
 		update_CPT(data, prev_miss_dist, now_miss_dist, missingIndexes);
