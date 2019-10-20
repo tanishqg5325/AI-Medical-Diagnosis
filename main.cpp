@@ -408,7 +408,7 @@ vector<int> getParentsFromIndex(int ind, int nodeIndex)
 	vector<int> pars(numParents);
 	for(int l=numParents-1;l>=0;l--)
 	{
-		prev *= nodes[parents[l]]->get_nvalues();
+		prev = nodes[parents[l]]->get_nvalues();
 		pars[l] = ind % prev;
 		ind /= prev;
 	}
